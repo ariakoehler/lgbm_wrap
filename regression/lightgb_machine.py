@@ -75,7 +75,7 @@ class LGBMachineRegressor(AutoSklearnRegressionAlgorithm):
                 'handles_multilabel': True,
                 'is_deterministic': True,
                 'input':(DENSE, SPARSE, UNSIGNED_DATA),
-                'output': (PREDICTIONS)}
+                'output': (PREDICTIONS,)}
 
     @staticmethod
     def get_hyperparameter_search_space(dataset_properties=None):
