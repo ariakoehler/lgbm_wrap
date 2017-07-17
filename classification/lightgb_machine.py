@@ -12,11 +12,13 @@ from autosklearn.pipeline.constants import *
 
 
 class LGBMachineClassifier(AutoSklearnClassificationAlgorithm):
-    def __init__(self, max_bin, learning_rate, feature_fraction,
-                 num_leaves, min_data_in_leaf, min_sum_hessian_in_leaf,
-                 max_depth, min_gain_to_split, random_state=None):# num_threads):
-        #set instance vars to args passed to __init__
+    def __init__(self, learning_rate, feature_fraction,
+                 num_leaves, min_data_in_leaf, max_depth,
+                 max_bin, min_gain_to_split, min_sum_hessian_in_leaf,
+                 bagging_fraction, lambda_l1, lambda_l2,
+                 min_data_in_bin, random_state=None, num_threads=1):
 
+        
         self.learning_rate = learning_rate
         self.num_leaves = num_leaves
         self.max_bin = max_bin
@@ -26,16 +28,17 @@ class LGBMachineClassifier(AutoSklearnClassificationAlgorithm):
         self.max_depth = max_depth
         self.min_gain_to_split = min_gain_to_split
         if random_state is None:
-            self.random_state = numpy.random.randint(1, 10000, size=1)[0]
+            self.random_state = np.random.randint(1, 10000, size=1)[0]
         else:
             self.random_state = random_state.randint(1, 10000, size=1)[0]
-
-        # self.num_threads = num_threads
-
+        self.num_threads = num_threads
+        self.bagging_fraction = bagging_fraction
+        self.lambda_l1 = lambda_l1
+        self.lambda_l2 = lambda_l2
+        self.min_data_in_bin = min_data_in_bin
         
     def fit(self, X, y):
-        import LightGBM as lgbm
-        #run checks, convert data to relevant types
+        import lightgbm as lgbm
 
         self.learning_rate = float(self.learning_rate)
         self.num_leaves = int(self.num_leaves)
@@ -45,8 +48,17 @@ class LGBMachineClassifier(AutoSklearnClassificationAlgorithm):
         self.min_sum_hessian_in_leaf = float(self.min_sum_hessian_in_leaf)
         self.max_depth = int(self.max_depth)
         self.min_gain_to_split = float(self.min_gain_to_split)
-        
+        self.num_threads = int(self.num_threads)
+        self.bagging_fraction = float(self.bagging_fraction)
+        self.lambda_l1 = float(self.lambda_l1)
+        self.lambda_l2 = float(self.lambda_l2)
+        self.min_data_in_bin = int(self.min_data_in_bin)
 
+        if len(np.unique(y))==2:
+            self.objective = 'binary'
+        else:
+            self.objective = 'multiclass'
+                   
         self.estimator = lgbm.LGBMClassifier(
             learning_rate = self.learning_rate,
             num_leaves = self.num_leaves,
@@ -56,7 +68,13 @@ class LGBMachineClassifier(AutoSklearnClassificationAlgorithm):
             min_sum_hessian_in_leaf = self.min_sum_hessian_in_leaf,
             max_depth = self.max_depth,
             min_gain_to_split = self.min_gain_to_split,
-            random_state = self.random_state
+            seed = self.random_state,
+            num_threads = self.num_threads,
+            bagging_fraction = self.bagging_fraction,
+            lambda_l1 = self.lambda_l1,
+            lambda_l2 = self.lambda_l2,
+            min_data_in_bin = self.min_data_in_bin,
+            objective = self.objective
         )
 
         self.estimator.fit(X,y)
@@ -71,7 +89,6 @@ class LGBMachineClassifier(AutoSklearnClassificationAlgorithm):
         if self.estimator is None:
             raise NotImplementedError
         probas = self.estimator.predict_proba(X)
-        probas = convert_multioutput_multiclass_to_multilabel(probas)
         return probas
 
     @staticmethod
@@ -81,7 +98,7 @@ class LGBMachineClassifier(AutoSklearnClassificationAlgorithm):
                 'handles_regression': False,
                 'handles_classification': True,
                 'handles_multiclass': True,
-                'handles_multilabel': True,
+                'handles_multilabel': False,
                 'is_deterministic': True,
                 'input':(DENSE, SPARSE, UNSIGNED_DATA),
                 'output': (PREDICTIONS,)}
@@ -90,27 +107,41 @@ class LGBMachineClassifier(AutoSklearnClassificationAlgorithm):
     def get_hyperparameter_search_space(dataset_properties=None):
         cs = ConfigurationSpace()
 
-        max_bin = UnParametrizedHyperparameter(
-            name='max_bin', value=255)
+        #Parametrized
         learning_rate = UniformFloatHyperparameter(
             name='learning_rate', lower=0.01, upper=1, default=0.1)
         feature_fraction = UniformFloatHyperparameter(
-            name='feature_fraction', lower=0.5, upper=1.0, default=1.0)
+            name='feature_fraction', lower=0.5, upper=1.0, default=0.9)
         num_leaves = UniformIntegerHyperparameter(
             name='num_leaves', lower=5, upper=500, default=31)
         min_data_in_leaf = UniformIntegerHyperparameter(
             name='min_data_in_leaf', lower=1, upper=30, default=20)
-        min_sum_hessian_in_leaf = UnParametrizedHyperparameter(
-            name='min_sum_hessian_in_leaf', value=1e-3)
-        max_depth = UniformIntegerHyperparameter(
-            name='max_depth', lower=-1, upper=10, default=-1)
+        lambda_l1 = UniformFloatHyperparameter(
+            name='lambda_l1', lower=0.0, upper=10.0, default=0.0)
+        lambda_l2 = UniformFloatHyperparameter(
+            name='lambda_l2', lower=0.0, upper=10.0, default=0.0)
+        max_bin = UniformIntegerHyperparameter(
+            name='max_bin', lower=50, upper=500, default=255)
+        
+
+        #UnParametrized
+        bagging_fraction = UnParametrizedHyperparameter(
+            name='bagging_fraction', value=1.0)
+        bagging_freq = UnParametrizedHyperparameter(
+            name='bagging_freq', value=5)
+        max_depth = UnParametrizedHyperparameter(
+            name='max_depth', value=-1)
+        min_data_in_bin = UnParametrizedHyperparameter(
+            name='min_data_in_bin', value=5)
         min_gain_to_split = UnParametrizedHyperparameter(
             name='min_gain_to_split', value=0)
-        # num_threads = Uniform
+        min_sum_hessian_in_leaf = UnParametrizedHyperparameter(
+            name='min_sum_hessian_in_leaf', value=1e-3)
+        
 
-        cs.add_hyperparameters([max_bin, learning_rate, feature_fraction,
-                                num_leaves, min_data_in_leaf,
-                                min_sum_hessian_in_leaf, max_depth,
-                                min_gain_to_split])
+        cs.add_hyperparameters([learning_rate, feature_fraction, bagging_fraction,
+                                num_leaves, min_data_in_leaf, lambda_l1,
+                                lambda_l2, min_data_in_bin, max_depth, max_bin,
+                                min_sum_hessian_in_leaf, min_gain_to_split]) 
         
         return cs
