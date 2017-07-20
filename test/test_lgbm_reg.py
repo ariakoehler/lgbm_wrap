@@ -16,6 +16,7 @@ def main():
         output_folder='/tmp/autosklearn_lgbm_out',
         delete_tmp_folder_after_terminate=False,
         include_estimators=['lightgb_machine'])
+
     automl.fit(X_train, y_train, dataset_name='boston',
                feat_type=feature_types)
 
