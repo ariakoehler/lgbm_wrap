@@ -83,7 +83,7 @@ class LGBMachineClassifier(AutoSklearnClassificationAlgorithm):
     def predict(self, X):
         if self.estimator is None:
             raise NotImplementedError
-        return self.estimator.predict(self, X)
+        return self.estimator.predict(X)
 
     def predict_proba(self, X):
         if self.estimator is None:
